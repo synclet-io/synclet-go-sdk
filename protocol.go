@@ -441,7 +441,7 @@ const (
 )
 
 type PropertyType struct {
-	Type        []PropType      `json:"type,omitempty"`
+	Type        PropTypes       `json:"type,omitempty"`
 	AirbyteType AirbytePropType `json:"airbyte_type,omitempty"`
 }
 type PropertySpec struct {
