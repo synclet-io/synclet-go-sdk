@@ -79,7 +79,7 @@ func (h APISource) Check(srcCfgPath string, logTracker synclet.LogTracker) error
 	if err != nil {
 		return fmt.Errorf("failed to connect to DummyJSON API: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected status code from DummyJSON API: %d", resp.StatusCode)
@@ -257,7 +257,7 @@ func (h APISource) Read(sourceCfgPath string, prevStatePath string, configuredCa
 			rowEstimate := int64(limit)
 			if err := synclet.EmitEstimate(tracker.Trace, stream.Stream.Name, &stream.Stream.Namespace,
 				synclet.EstimateTypeStream, &rowEstimate, nil); err != nil {
-				tracker.Log(synclet.LogLevelWarn, fmt.Sprintf("Failed to emit estimate: %v", err))
+				_ = tracker.Log(synclet.LogLevelWarn, fmt.Sprintf("Failed to emit estimate: %v", err))
 			}
 
 			var usersResp UsersResponse
@@ -279,7 +279,7 @@ func (h APISource) Read(sourceCfgPath string, prevStatePath string, configuredCa
 			rowEstimate := int64(limit)
 			if err := synclet.EmitEstimate(tracker.Trace, stream.Stream.Name, &stream.Stream.Namespace,
 				synclet.EstimateTypeStream, &rowEstimate, nil); err != nil {
-				tracker.Log(synclet.LogLevelWarn, fmt.Sprintf("Failed to emit estimate: %v", err))
+				_ = tracker.Log(synclet.LogLevelWarn, fmt.Sprintf("Failed to emit estimate: %v", err))
 			}
 
 			var productsResp ProductsResponse
@@ -307,6 +307,6 @@ func httpGet(uri string, v interface{}) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return json.NewDecoder(resp.Body).Decode(v)
 }

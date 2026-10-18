@@ -66,10 +66,9 @@ const (
 )
 
 var (
-	timeType      = reflect.TypeOf(time.Time{})
-	ipType        = reflect.TypeOf(net.IP{})
-	uriType       = reflect.TypeOf(url.URL{})
-	byteSliceType = reflect.TypeOf([]byte(nil))
+	timeType = reflect.TypeOf(time.Time{})
+	ipType   = reflect.TypeOf(net.IP{})
+	uriType  = reflect.TypeOf(url.URL{})
 )
 
 // I returns a pointer to the given int. Useful helper function for pointer
@@ -388,7 +387,7 @@ func GenerateFromField(f reflect.StructField, mode Mode) (string, bool, *Schema,
 	}
 
 	if tag, ok := f.Tag.Lookup("uniqueItems"); ok {
-		if !(tag == "true" || tag == "false") {
+		if tag != "true" && tag != "false" {
 			return name, false, nil, fmt.Errorf("%s uniqueItems: boolean should be true or false: %w", f.Name, ErrSchemaInvalid)
 		}
 		s.UniqueItems = tag == "true"
@@ -411,28 +410,28 @@ func GenerateFromField(f reflect.StructField, mode Mode) (string, bool, *Schema,
 	}
 
 	if tag, ok := f.Tag.Lookup("nullable"); ok {
-		if !(tag == "true" || tag == "false") {
+		if tag != "true" && tag != "false" {
 			return name, false, nil, fmt.Errorf("%s nullable: boolean should be true or false but got %s: %w", f.Name, tag, ErrSchemaInvalid)
 		}
 		s.Nullable = tag == "true"
 	}
 
 	if tag, ok := f.Tag.Lookup("readOnly"); ok {
-		if !(tag == "true" || tag == "false") {
+		if tag != "true" && tag != "false" {
 			return name, false, nil, fmt.Errorf("%s readOnly: boolean should be true or false: %w", f.Name, ErrSchemaInvalid)
 		}
 		s.ReadOnly = tag == "true"
 	}
 
 	if tag, ok := f.Tag.Lookup("writeOnly"); ok {
-		if !(tag == "true" || tag == "false") {
+		if tag != "true" && tag != "false" {
 			return name, false, nil, fmt.Errorf("%s writeOnly: boolean should be true or false: %w", f.Name, ErrSchemaInvalid)
 		}
 		s.WriteOnly = tag == "true"
 	}
 
 	if tag, ok := f.Tag.Lookup("deprecated"); ok {
-		if !(tag == "true" || tag == "false") {
+		if tag != "true" && tag != "false" {
 			return name, false, nil, fmt.Errorf("%s deprecated: boolean should be true or false: %w", f.Name, ErrSchemaInvalid)
 		}
 		s.Deprecated = tag == "true"

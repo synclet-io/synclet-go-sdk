@@ -39,7 +39,7 @@ func (dr DestinationRunner) Start() error {
 			Log: dr.msgTracker.Log,
 		})
 		if err != nil {
-			dr.msgTracker.Log(LogLevelError, "failed"+err.Error())
+			_ = dr.msgTracker.Log(LogLevelError, "failed"+err.Error())
 			return err
 		}
 		return write(dr.writer, &message{

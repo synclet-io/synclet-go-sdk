@@ -31,7 +31,7 @@ func NewHTTPSource(baseURL string) synclet.Source {
 }
 
 func (h HTTPSource) Spec(logTracker synclet.LogTracker) (*synclet.ConnectorSpecification, error) {
-	logTracker.Log(synclet.LogLevelInfo, "Running Spec")
+	_ = logTracker.Log(synclet.LogLevelInfo, "Running Spec")
 	return &synclet.ConnectorSpecification{
 		DocumentationURL:      "https://bitstrapped.com",
 		ChangeLogURL:          "https://bitstrapped.com",
@@ -64,7 +64,7 @@ func (h HTTPSource) Spec(logTracker synclet.LogTracker) (*synclet.ConnectorSpeci
 }
 
 func (h HTTPSource) Check(srcCfgPath string, logTracker synclet.LogTracker) error {
-	logTracker.Log(synclet.LogLevelDebug, "validating api connection")
+	_ = logTracker.Log(synclet.LogLevelDebug, "validating api connection")
 	var srcCfg HTTPConfig
 	err := synclet.UnmarshalFromPath(srcCfgPath, &srcCfg)
 	if err != nil {
@@ -138,7 +138,7 @@ type Payment struct {
 
 func (h HTTPSource) Read(sourceCfgPath string, prevStatePath string, configuredCat *synclet.ConfiguredCatalog,
 	tracker synclet.MessageTracker) error {
-	tracker.Log(synclet.LogLevelInfo, "Running read")
+	_ = tracker.Log(synclet.LogLevelInfo, "Running read")
 	var src HTTPConfig
 	err := synclet.UnmarshalFromPath(sourceCfgPath, &src)
 	if err != nil {
@@ -147,7 +147,7 @@ func (h HTTPSource) Read(sourceCfgPath string, prevStatePath string, configuredC
 
 	// see if there is a last sync
 	var st LastSyncTime
-	synclet.UnmarshalFromPath(sourceCfgPath, &st)
+	_ = synclet.UnmarshalFromPath(sourceCfgPath, &st)
 	if st.Timestamp <= 0 {
 		st.Timestamp = -1
 	}

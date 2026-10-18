@@ -79,11 +79,11 @@ func TestDestinationRunnerCheckSuccess(t *testing.T) {
 	defer func() { os.Args = origArgs }()
 
 	// Create temp config file
-	tmpFile, err := os.CreateTemp("", "dst-config-*.json")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "dst-config-*.json")
 	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
-	tmpFile.WriteString(`{"host":"localhost"}`)
-	tmpFile.Close()
+	_, err = tmpFile.WriteString(`{"host":"localhost"}`)
+	require.NoError(t, err)
+	require.NoError(t, tmpFile.Close())
 
 	os.Args = []string{"connector", "check", "--config", tmpFile.Name()}
 
@@ -114,11 +114,11 @@ func TestDestinationRunnerCheckFailure(t *testing.T) {
 	origArgs := os.Args
 	defer func() { os.Args = origArgs }()
 
-	tmpFile, err := os.CreateTemp("", "dst-config-*.json")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "dst-config-*.json")
 	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
-	tmpFile.WriteString(`{"host":"localhost"}`)
-	tmpFile.Close()
+	_, err = tmpFile.WriteString(`{"host":"localhost"}`)
+	require.NoError(t, err)
+	require.NoError(t, tmpFile.Close())
 
 	os.Args = []string{"connector", "check", "--config", tmpFile.Name()}
 
@@ -147,18 +147,18 @@ func TestDestinationRunnerWrite(t *testing.T) {
 	defer func() { os.Args = origArgs }()
 
 	// Create temp config file
-	cfgFile, err := os.CreateTemp("", "dst-config-*.json")
+	cfgFile, err := os.CreateTemp(t.TempDir(), "dst-config-*.json")
 	require.NoError(t, err)
-	defer os.Remove(cfgFile.Name())
-	cfgFile.WriteString(`{"host":"localhost"}`)
-	cfgFile.Close()
+	_, err = cfgFile.WriteString(`{"host":"localhost"}`)
+	require.NoError(t, err)
+	require.NoError(t, cfgFile.Close())
 
 	// Create temp catalog file
-	catFile, err := os.CreateTemp("", "dst-catalog-*.json")
+	catFile, err := os.CreateTemp(t.TempDir(), "dst-catalog-*.json")
 	require.NoError(t, err)
-	defer os.Remove(catFile.Name())
-	catFile.WriteString(`{"streams":[]}`)
-	catFile.Close()
+	_, err = catFile.WriteString(`{"streams":[]}`)
+	require.NoError(t, err)
+	require.NoError(t, catFile.Close())
 
 	os.Args = []string{"connector", "write", "--config", cfgFile.Name(), "--catalog", catFile.Name()}
 

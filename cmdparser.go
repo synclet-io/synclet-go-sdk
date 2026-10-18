@@ -2,26 +2,9 @@ package synclet
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 )
-
-func getArgument(name string) (string, error) {
-	for i, arg := range os.Args {
-		if arg != name {
-			continue
-		}
-
-		if i+1 >= len(os.Args) {
-			return "", errors.New("no value provided")
-		}
-
-		return os.Args[i+1], nil
-	}
-
-	return "", fmt.Errorf("argument %s not found", name)
-}
 
 func getSourceConfigPath() (string, error) {
 	if os.Args[2] != "--config" {

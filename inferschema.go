@@ -3,8 +3,9 @@ package synclet
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/synclet-io/synclet-go-sdk/schema"
 	"reflect"
+
+	"github.com/synclet-io/synclet-go-sdk/schema"
 )
 
 // Infer schema translates golang structs to JSONSchema format
@@ -13,19 +14,19 @@ func InferSchemaFromStruct(i interface{}, logTracker LogTracker) Properties {
 
 	s, err := schema.Generate(reflect.TypeOf(i))
 	if err != nil {
-		logTracker.Log(LogLevelError, fmt.Sprintf("generate schema error: %v", err))
+		_ = logTracker.Log(LogLevelError, fmt.Sprintf("generate schema error: %v", err))
 		return prop
 	}
 
 	b, err := json.Marshal(s)
 	if err != nil {
-		logTracker.Log(LogLevelError, fmt.Sprintf("json marshal schema error: %v", err))
+		_ = logTracker.Log(LogLevelError, fmt.Sprintf("json marshal schema error: %v", err))
 		return prop
 	}
 
 	err = json.Unmarshal(b, &prop)
 	if err != nil {
-		logTracker.Log(LogLevelError, fmt.Sprintf("unmarshal schema to propspec error: %v", err))
+		_ = logTracker.Log(LogLevelError, fmt.Sprintf("unmarshal schema to propspec error: %v", err))
 		return prop
 	}
 

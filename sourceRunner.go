@@ -6,20 +6,9 @@ import (
 	"os"
 )
 
-type readerProvider interface {
-	GetReader() (io.Reader, error)
-}
-type funcReaderProvider func() (io.Reader, error)
-
-func (frp funcReaderProvider) GetReader() (io.Reader, error) {
-	return frp()
-}
-
 type sourceRunnerOptions struct {
-	writer                io.Writer
-	configReaderProvider  func() (io.Reader, error)
-	stateReaderProvider   func() (io.Reader, error)
-	catalogReaderProvider func() (io.Reader, error)
+	writer               io.Writer
+	configReaderProvider func() (io.Reader, error)
 }
 
 func SourceWithWriter(w io.Writer) func(*sourceRunnerOptions) {
@@ -79,7 +68,7 @@ func (sr SourceRunner) Start() error {
 			Log: sr.msgTracker.Log,
 		})
 		if err != nil {
-			sr.msgTracker.Log(LogLevelError, "failed"+err.Error())
+			_ = sr.msgTracker.Log(LogLevelError, "failed"+err.Error())
 			return err
 		}
 		return write(sr.writer, &message{
