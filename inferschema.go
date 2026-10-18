@@ -1,9 +1,9 @@
-package airbyte
+package synclet
 
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/saturn4er/airbyte-go-sdk/schema"
+	"github.com/synclet-io/synclet-go-sdk/schema"
 	"reflect"
 )
 

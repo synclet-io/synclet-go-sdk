@@ -1,4 +1,4 @@
-package airbyte
+package synclet
 
 // Source is the only interface you need to define to create your source!
 type Source interface {

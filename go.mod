@@ -1,6 +1,6 @@
-module github.com/saturn4er/airbyte-go-sdk
+module github.com/synclet-io/synclet-go-sdk
 
-go 1.17
+go 1.26
 
 require github.com/stretchr/testify v1.11.1
 

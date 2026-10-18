@@ -1,4 +1,4 @@
-package airbyte_test
+package synclet_test
 
 import (
 	"encoding/json"
@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/saturn4er/airbyte-go-sdk"
+	synclet "github.com/synclet-io/synclet-go-sdk"
 )
 
 type HTTPSource struct {
@@ -24,36 +24,36 @@ type HTTPConfig struct {
 	APIKey string `json:"apiKey"`
 }
 
-func NewHTTPSource(baseURL string) airbyte.Source {
+func NewHTTPSource(baseURL string) synclet.Source {
 	return HTTPSource{
 		baseURL: baseURL,
 	}
 }
 
-func (h HTTPSource) Spec(logTracker airbyte.LogTracker) (*airbyte.ConnectorSpecification, error) {
-	logTracker.Log(airbyte.LogLevelInfo, "Running Spec")
-	return &airbyte.ConnectorSpecification{
+func (h HTTPSource) Spec(logTracker synclet.LogTracker) (*synclet.ConnectorSpecification, error) {
+	logTracker.Log(synclet.LogLevelInfo, "Running Spec")
+	return &synclet.ConnectorSpecification{
 		DocumentationURL:      "https://bitstrapped.com",
 		ChangeLogURL:          "https://bitstrapped.com",
 		SupportsIncremental:   false,
 		SupportsNormalization: true,
 		SupportsDBT:           true,
-		SupportedDestinationSyncModes: []airbyte.DestinationSyncMode{
-			airbyte.DestinationSyncModeOverwrite,
+		SupportedDestinationSyncModes: []synclet.DestinationSyncMode{
+			synclet.DestinationSyncModeOverwrite,
 		},
-		ConnectionSpecification: airbyte.ConnectionSpecification{
+		ConnectionSpecification: synclet.ConnectionSpecification{
 			Title:       "Example HTTP Source",
 			Description: "This is an example http source for the docs's",
 			Type:        "object",
-			Required:    []airbyte.PropertyName{"apiKey"},
-			Properties: airbyte.Properties{
-				Properties: map[airbyte.PropertyName]airbyte.PropertySpec{
+			Required:    []synclet.PropertyName{"apiKey"},
+			Properties: synclet.Properties{
+				Properties: map[synclet.PropertyName]synclet.PropertySpec{
 					"apiKey": {
 						Description: "api key to access http source, valid uuid",
 						Examples:    []string{"xxxx-xxxx-xxxx-xxxx"},
-						PropertyType: airbyte.PropertyType{
-							Type: []airbyte.PropType{
-								airbyte.String,
+						PropertyType: synclet.PropertyType{
+							Type: []synclet.PropType{
+								synclet.String,
 							},
 						},
 					},
@@ -63,10 +63,10 @@ func (h HTTPSource) Spec(logTracker airbyte.LogTracker) (*airbyte.ConnectorSpeci
 	}, nil
 }
 
-func (h HTTPSource) Check(srcCfgPath string, logTracker airbyte.LogTracker) error {
-	logTracker.Log(airbyte.LogLevelDebug, "validating api connection")
+func (h HTTPSource) Check(srcCfgPath string, logTracker synclet.LogTracker) error {
+	logTracker.Log(synclet.LogLevelDebug, "validating api connection")
 	var srcCfg HTTPConfig
-	err := airbyte.UnmarshalFromPath(srcCfgPath, &srcCfg)
+	err := synclet.UnmarshalFromPath(srcCfgPath, &srcCfg)
 	if err != nil {
 		return err
 	}
@@ -83,42 +83,42 @@ func (h HTTPSource) Check(srcCfgPath string, logTracker airbyte.LogTracker) erro
 	return nil
 }
 
-func (h HTTPSource) Discover(srcCfgPath string, logTracker airbyte.LogTracker) (*airbyte.Catalog, error) {
+func (h HTTPSource) Discover(srcCfgPath string, logTracker synclet.LogTracker) (*synclet.Catalog, error) {
 	var srcCfg HTTPConfig
-	err := airbyte.UnmarshalFromPath(srcCfgPath, &srcCfg)
+	err := synclet.UnmarshalFromPath(srcCfgPath, &srcCfg)
 	if err != nil {
 		return nil, err
 	}
 
-	return &airbyte.Catalog{Streams: []airbyte.Stream{{
+	return &synclet.Catalog{Streams: []synclet.Stream{{
 		Name: "users",
-		JSONSchema: airbyte.Properties{
-			Properties: map[airbyte.PropertyName]airbyte.PropertySpec{
+		JSONSchema: synclet.Properties{
+			Properties: map[synclet.PropertyName]synclet.PropertySpec{
 				"userid": {
-					PropertyType: airbyte.PropertyType{
-						Type:        []airbyte.PropType{airbyte.Integer, airbyte.Null},
-						AirbyteType: airbyte.BigInteger},
+					PropertyType: synclet.PropertyType{
+						Type:        []synclet.PropType{synclet.Integer, synclet.Null},
+						AirbyteType: synclet.BigInteger},
 					Description: "user ID - see the big int",
 				},
 				"name": {
-					PropertyType: airbyte.PropertyType{
-						Type: []airbyte.PropType{airbyte.String, airbyte.Null},
+					PropertyType: synclet.PropertyType{
+						Type: []synclet.PropType{synclet.String, synclet.Null},
 					},
 					Description: "user name",
 				},
 			},
 		},
-		SupportedSyncModes: []airbyte.SyncMode{
-			airbyte.SyncModeFullRefresh,
+		SupportedSyncModes: []synclet.SyncMode{
+			synclet.SyncModeFullRefresh,
 		},
 		SourceDefinedCursor: false,
 		Namespace:           "bitstrapped",
 	},
 		{
 			Name:       "payments",
-			JSONSchema: airbyte.InferSchemaFromStruct(Payment{}, logTracker),
-			SupportedSyncModes: []airbyte.SyncMode{
-				airbyte.SyncModeFullRefresh,
+			JSONSchema: synclet.InferSchemaFromStruct(Payment{}, logTracker),
+			SupportedSyncModes: []synclet.SyncMode{
+				synclet.SyncModeFullRefresh,
 			},
 			SourceDefinedCursor: false,
 			Namespace:           "bitstrapped",
@@ -136,18 +136,18 @@ type Payment struct {
 	PaymentAmount int64 `json:"paymentAmount"`
 }
 
-func (h HTTPSource) Read(sourceCfgPath string, prevStatePath string, configuredCat *airbyte.ConfiguredCatalog,
-	tracker airbyte.MessageTracker) error {
-	tracker.Log(airbyte.LogLevelInfo, "Running read")
+func (h HTTPSource) Read(sourceCfgPath string, prevStatePath string, configuredCat *synclet.ConfiguredCatalog,
+	tracker synclet.MessageTracker) error {
+	tracker.Log(synclet.LogLevelInfo, "Running read")
 	var src HTTPConfig
-	err := airbyte.UnmarshalFromPath(sourceCfgPath, &src)
+	err := synclet.UnmarshalFromPath(sourceCfgPath, &src)
 	if err != nil {
 		return err
 	}
 
 	// see if there is a last sync
 	var st LastSyncTime
-	airbyte.UnmarshalFromPath(sourceCfgPath, &st)
+	synclet.UnmarshalFromPath(sourceCfgPath, &st)
 	if st.Timestamp <= 0 {
 		st.Timestamp = -1
 	}
@@ -194,14 +194,14 @@ func (h HTTPSource) Read(sourceCfgPath string, prevStatePath string, configuredC
 		}
 	}
 
-	return tracker.State(airbyte.StateTypeLegacy, &LastSyncTime{
+	return tracker.State(synclet.StateTypeLegacy, &LastSyncTime{
 		Timestamp: time.Now().UnixMilli(),
 	})
 }
 
 func Example() {
 	hsrc := NewHTTPSource("https://api.bitstrapped.com")
-	runner := airbyte.NewSourceRunner(hsrc, os.Stdout)
+	runner := synclet.NewSourceRunner(hsrc, os.Stdout)
 	err := runner.Start()
 	if err != nil {
 		log.Fatal(err)

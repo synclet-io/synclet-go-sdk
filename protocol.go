@@ -1,4 +1,4 @@
-package airbyte
+package synclet
 
 import (
 	"encoding/json"

@@ -1,4 +1,4 @@
-FROM golang:1.17-buster as build
+FROM golang:1.26-bookworm as build
 WORKDIR /base
 ADD . /base/
 RUN go build -o /base/app .

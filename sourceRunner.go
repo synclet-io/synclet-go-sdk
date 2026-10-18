@@ -1,4 +1,4 @@
-package airbyte
+package synclet
 
 import (
 	"io"
@@ -64,7 +64,7 @@ func NewSourceRunner(src Source, w io.Writer) SourceRunner {
 //
 //	 func() main {
 //		source := newCoolSource()
-//		runner := airbyte.NewSourceRunner(source)
+//		runner := synclet.NewSourceRunner(source)
 //		err := runner.Start()
 //		if err != nil {
 //			log.Fatal(err)

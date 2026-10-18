@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/saturn4er/airbyte-go-sdk"
+	synclet "github.com/synclet-io/synclet-go-sdk"
 )
 
 type APISource struct {
@@ -22,39 +22,39 @@ type HTTPConfig struct {
 	Limit int `json:"limit"` // Optional: limit number of records (default: 30)
 }
 
-func NewAPISource(baseURL string) airbyte.Source {
+func NewAPISource(baseURL string) synclet.Source {
 	return APISource{
 		baseURL: baseURL,
 	}
 }
 
-func (h APISource) Spec(logTracker airbyte.LogTracker) (*airbyte.ConnectorSpecification, error) {
-	if err := logTracker.Log(airbyte.LogLevelInfo, "Running Spec"); err != nil {
+func (h APISource) Spec(logTracker synclet.LogTracker) (*synclet.ConnectorSpecification, error) {
+	if err := logTracker.Log(synclet.LogLevelInfo, "Running Spec"); err != nil {
 		return nil, err
 	}
-	return &airbyte.ConnectorSpecification{
+	return &synclet.ConnectorSpecification{
 		DocumentationURL:      "https://dummyjson.com",
-		ChangeLogURL:          "https://github.com/bitstrapped/airbyte-go-sdk",
+		ChangeLogURL:          "https://github.com/synclet-io/synclet-go-sdk",
 		SupportsIncremental:   false,
 		SupportsNormalization: true,
 		SupportsDBT:           true,
-		SupportedDestinationSyncModes: []airbyte.DestinationSyncMode{
-			airbyte.DestinationSyncModeOverwrite,
+		SupportedDestinationSyncModes: []synclet.DestinationSyncMode{
+			synclet.DestinationSyncModeOverwrite,
 		},
 		ProtocolVersion: "0.5.2", // Airbyte Protocol v0.5.2
-		ConnectionSpecification: airbyte.ConnectionSpecification{
+		ConnectionSpecification: synclet.ConnectionSpecification{
 			Title:       "DummyJSON Source",
 			Description: "Example source connector that fetches data from dummyjson.com API",
 			Type:        "object",
-			Required:    []airbyte.PropertyName{},
-			Properties: airbyte.Properties{
-				Properties: map[airbyte.PropertyName]airbyte.PropertySpec{
+			Required:    []synclet.PropertyName{},
+			Properties: synclet.Properties{
+				Properties: map[synclet.PropertyName]synclet.PropertySpec{
 					"limit": {
 						Description: "Maximum number of records to fetch per stream (default: 30)",
 						Examples:    []string{"10", "30", "100"},
-						PropertyType: airbyte.PropertyType{
-							Type: []airbyte.PropType{
-								airbyte.Integer,
+						PropertyType: synclet.PropertyType{
+							Type: []synclet.PropType{
+								synclet.Integer,
 							},
 						},
 					},
@@ -64,12 +64,12 @@ func (h APISource) Spec(logTracker airbyte.LogTracker) (*airbyte.ConnectorSpecif
 	}, nil
 }
 
-func (h APISource) Check(srcCfgPath string, logTracker airbyte.LogTracker) error {
-	if err := logTracker.Log(airbyte.LogLevelDebug, "validating api connection"); err != nil {
+func (h APISource) Check(srcCfgPath string, logTracker synclet.LogTracker) error {
+	if err := logTracker.Log(synclet.LogLevelDebug, "validating api connection"); err != nil {
 		return err
 	}
 	var srcCfg HTTPConfig
-	err := airbyte.UnmarshalFromPath(srcCfgPath, &srcCfg)
+	err := synclet.UnmarshalFromPath(srcCfgPath, &srcCfg)
 	if err != nil {
 		return err
 	}
@@ -88,106 +88,106 @@ func (h APISource) Check(srcCfgPath string, logTracker airbyte.LogTracker) error
 	return nil
 }
 
-func (h APISource) Discover(srcCfgPath string, logTracker airbyte.LogTracker) (*airbyte.Catalog, error) {
+func (h APISource) Discover(srcCfgPath string, logTracker synclet.LogTracker) (*synclet.Catalog, error) {
 	var srcCfg HTTPConfig
-	err := airbyte.UnmarshalFromPath(srcCfgPath, &srcCfg)
+	err := synclet.UnmarshalFromPath(srcCfgPath, &srcCfg)
 	if err != nil {
 		return nil, err
 	}
 
-	return &airbyte.Catalog{Streams: []airbyte.Stream{
+	return &synclet.Catalog{Streams: []synclet.Stream{
 		{
 			Name: "users",
-			JSONSchema: airbyte.Properties{
-				Properties: map[airbyte.PropertyName]airbyte.PropertySpec{
+			JSONSchema: synclet.Properties{
+				Properties: map[synclet.PropertyName]synclet.PropertySpec{
 					"id": {
-						PropertyType: airbyte.PropertyType{
-							Type: []airbyte.PropType{airbyte.Integer},
+						PropertyType: synclet.PropertyType{
+							Type: []synclet.PropType{synclet.Integer},
 						},
 						Description: "User ID",
 					},
 					"firstName": {
-						PropertyType: airbyte.PropertyType{
-							Type: []airbyte.PropType{airbyte.String},
+						PropertyType: synclet.PropertyType{
+							Type: []synclet.PropType{synclet.String},
 						},
 						Description: "First name",
 					},
 					"lastName": {
-						PropertyType: airbyte.PropertyType{
-							Type: []airbyte.PropType{airbyte.String},
+						PropertyType: synclet.PropertyType{
+							Type: []synclet.PropType{synclet.String},
 						},
 						Description: "Last name",
 					},
 					"email": {
-						PropertyType: airbyte.PropertyType{
-							Type: []airbyte.PropType{airbyte.String},
+						PropertyType: synclet.PropertyType{
+							Type: []synclet.PropType{synclet.String},
 						},
 						Description: "Email address",
 					},
 					"phone": {
-						PropertyType: airbyte.PropertyType{
-							Type: []airbyte.PropType{airbyte.String},
+						PropertyType: synclet.PropertyType{
+							Type: []synclet.PropType{synclet.String},
 						},
 						Description: "Phone number",
 					},
 					"age": {
-						PropertyType: airbyte.PropertyType{
-							Type: []airbyte.PropType{airbyte.Integer},
+						PropertyType: synclet.PropertyType{
+							Type: []synclet.PropType{synclet.Integer},
 						},
 						Description: "Age",
 					},
 				},
 			},
-			SupportedSyncModes: []airbyte.SyncMode{
-				airbyte.SyncModeFullRefresh,
+			SupportedSyncModes: []synclet.SyncMode{
+				synclet.SyncModeFullRefresh,
 			},
 			SourceDefinedCursor: false,
 			Namespace:           "dummyjson",
 		},
 		{
 			Name: "products",
-			JSONSchema: airbyte.Properties{
-				Properties: map[airbyte.PropertyName]airbyte.PropertySpec{
+			JSONSchema: synclet.Properties{
+				Properties: map[synclet.PropertyName]synclet.PropertySpec{
 					"id": {
-						PropertyType: airbyte.PropertyType{
-							Type: []airbyte.PropType{airbyte.Integer},
+						PropertyType: synclet.PropertyType{
+							Type: []synclet.PropType{synclet.Integer},
 						},
 						Description: "Product ID",
 					},
 					"title": {
-						PropertyType: airbyte.PropertyType{
-							Type: []airbyte.PropType{airbyte.String},
+						PropertyType: synclet.PropertyType{
+							Type: []synclet.PropType{synclet.String},
 						},
 						Description: "Product title",
 					},
 					"description": {
-						PropertyType: airbyte.PropertyType{
-							Type: []airbyte.PropType{airbyte.String},
+						PropertyType: synclet.PropertyType{
+							Type: []synclet.PropType{synclet.String},
 						},
 						Description: "Product description",
 					},
 					"price": {
-						PropertyType: airbyte.PropertyType{
-							Type: []airbyte.PropType{airbyte.Number},
+						PropertyType: synclet.PropertyType{
+							Type: []synclet.PropType{synclet.Number},
 						},
 						Description: "Product price",
 					},
 					"category": {
-						PropertyType: airbyte.PropertyType{
-							Type: []airbyte.PropType{airbyte.String},
+						PropertyType: synclet.PropertyType{
+							Type: []synclet.PropType{synclet.String},
 						},
 						Description: "Product category",
 					},
 					"brand": {
-						PropertyType: airbyte.PropertyType{
-							Type: []airbyte.PropType{airbyte.String},
+						PropertyType: synclet.PropertyType{
+							Type: []synclet.PropType{synclet.String},
 						},
 						Description: "Product brand",
 					},
 				},
 			},
-			SupportedSyncModes: []airbyte.SyncMode{
-				airbyte.SyncModeFullRefresh,
+			SupportedSyncModes: []synclet.SyncMode{
+				synclet.SyncModeFullRefresh,
 			},
 			SourceDefinedCursor: false,
 			Namespace:           "dummyjson",
@@ -227,13 +227,13 @@ type ProductsResponse struct {
 	Limit    int       `json:"limit"`
 }
 
-func (h APISource) Read(sourceCfgPath string, prevStatePath string, configuredCat *airbyte.ConfiguredCatalog,
-	tracker airbyte.MessageTracker) error {
-	if err := tracker.Log(airbyte.LogLevelInfo, "Running read"); err != nil {
+func (h APISource) Read(sourceCfgPath string, prevStatePath string, configuredCat *synclet.ConfiguredCatalog,
+	tracker synclet.MessageTracker) error {
+	if err := tracker.Log(synclet.LogLevelInfo, "Running read"); err != nil {
 		return err
 	}
 	var src HTTPConfig
-	err := airbyte.UnmarshalFromPath(sourceCfgPath, &src)
+	err := synclet.UnmarshalFromPath(sourceCfgPath, &src)
 	if err != nil {
 		return err
 	}
@@ -246,7 +246,7 @@ func (h APISource) Read(sourceCfgPath string, prevStatePath string, configuredCa
 
 	// see if there is a last sync
 	var st LastSyncTime
-	_ = airbyte.UnmarshalFromPath(sourceCfgPath, &st)
+	_ = synclet.UnmarshalFromPath(sourceCfgPath, &st)
 	if st.Timestamp <= 0 {
 		st.Timestamp = -1
 	}
@@ -255,9 +255,9 @@ func (h APISource) Read(sourceCfgPath string, prevStatePath string, configuredCa
 		if stream.Stream.Name == "users" {
 			// Emit estimate for progress tracking (protocol v0.5.2 feature)
 			rowEstimate := int64(limit)
-			if err := airbyte.EmitEstimate(tracker.Trace, stream.Stream.Name, &stream.Stream.Namespace,
-				airbyte.EstimateTypeStream, &rowEstimate, nil); err != nil {
-				tracker.Log(airbyte.LogLevelWarn, fmt.Sprintf("Failed to emit estimate: %v", err))
+			if err := synclet.EmitEstimate(tracker.Trace, stream.Stream.Name, &stream.Stream.Namespace,
+				synclet.EstimateTypeStream, &rowEstimate, nil); err != nil {
+				tracker.Log(synclet.LogLevelWarn, fmt.Sprintf("Failed to emit estimate: %v", err))
 			}
 
 			var usersResp UsersResponse
@@ -277,9 +277,9 @@ func (h APISource) Read(sourceCfgPath string, prevStatePath string, configuredCa
 		if stream.Stream.Name == "products" {
 			// Emit estimate for progress tracking (protocol v0.5.2 feature)
 			rowEstimate := int64(limit)
-			if err := airbyte.EmitEstimate(tracker.Trace, stream.Stream.Name, &stream.Stream.Namespace,
-				airbyte.EstimateTypeStream, &rowEstimate, nil); err != nil {
-				tracker.Log(airbyte.LogLevelWarn, fmt.Sprintf("Failed to emit estimate: %v", err))
+			if err := synclet.EmitEstimate(tracker.Trace, stream.Stream.Name, &stream.Stream.Namespace,
+				synclet.EstimateTypeStream, &rowEstimate, nil); err != nil {
+				tracker.Log(synclet.LogLevelWarn, fmt.Sprintf("Failed to emit estimate: %v", err))
 			}
 
 			var productsResp ProductsResponse
@@ -297,7 +297,7 @@ func (h APISource) Read(sourceCfgPath string, prevStatePath string, configuredCa
 		}
 	}
 
-	return tracker.State(airbyte.StateTypeLegacy, &LastSyncTime{
+	return tracker.State(synclet.StateTypeLegacy, &LastSyncTime{
 		Timestamp: time.Now().UnixMilli(),
 	})
 }

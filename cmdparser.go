@@ -1,4 +1,4 @@
-package airbyte
+package synclet
 
 import (
 	"encoding/json"
@@ -59,7 +59,7 @@ func getCatalogPath() (string, error) {
 //
 //	 func (s *CustomSource) Read(stPath string, ...) error {
 //		 var cs CustomState
-//		 err = airbyte.UnmarshalFromPath(stPath, &cs)
+//		 err = synclet.UnmarshalFromPath(stPath, &cs)
 //		 if err != nil {
 //			 // handle error
 //		 }

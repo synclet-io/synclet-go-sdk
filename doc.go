@@ -1,4 +1,6 @@
-// Airbyte is the go-sdk/cdk to help build connectors quickly in go
-// This package abstracts away much of the "protocol" away from the user and lets them focus on biz logic
-// It focuses on developer efficiency and tries to be strongly typed as much as possible to help dev's move fast without mistakes
-package airbyte
+// Package synclet is a Go SDK for building connectors that implement the Airbyte protocol.
+// It abstracts the protocol away from the connector author, who implements a small,
+// strongly typed interface and leaves message framing to the runners.
+//
+// Airbyte is a trademark of Airbyte, Inc.; this project is not affiliated with or endorsed by Airbyte, Inc.
+package synclet
