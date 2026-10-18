@@ -58,7 +58,9 @@ type SourceSuite struct {
 //   - discover returns streams whose json_schema is a valid JSON schema
 //     with properties;
 //   - read emits records only of the configured streams, each valid against
-//     its stream's json_schema with no undeclared top-level field;
+//     its stream's json_schema with no undeclared top-level field; a
+//     date-time or time property with airbyte_type timestamp_without_timezone
+//     or time_without_timezone takes values without a zone;
 //   - no record follows its stream's last STATE, and an incremental stream
 //     with records emits a STATE;
 //   - every incremental stream with records has a value at its cursor field,
@@ -487,8 +489,11 @@ func compileSchema(raw json.RawMessage) (*jsonschema.Schema, error) {
 	if err != nil {
 		return nil, err
 	}
+	localizeFormats(doc)
 	c := jsonschema.NewCompiler()
 	c.DefaultDraft(jsonschema.Draft7)
+	c.RegisterFormat(localDateTime)
+	c.RegisterFormat(localTime)
 	const url = "mem://schema.json"
 	if err := c.AddResource(url, doc); err != nil {
 		return nil, err
