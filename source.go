@@ -1,16 +1,18 @@
 package synclet
 
-// Source is the only interface you need to define to create your source!
-type Source interface {
-	// Spec returns the input "form" spec needed for your source
-	Spec(logTracker LogTracker) (*ConnectorSpecification, error)
-	// Check verifies the source - usually verify creds/connection etc.
-	Check(srcCfgPath string, logTracker LogTracker) error
-	// Discover returns the schema of the data you want to sync
-	Discover(srcConfigPath string, logTracker LogTracker) (*Catalog, error)
-	// Read will read the actual data from your source and use tracker.Record(), tracker.State() and tracker.Log() to sync data with airbyte/destinations
-	// MessageTracker is thread-safe and so it is completely find to spin off goroutines to sync your data (just don't forget your waitgroups :))
-	// returning an error from this will cancel the sync and returning a nil from this will successfully end the sync
-	Read(sourceCfgPath string, prevStatePath string, configuredCat *ConfiguredCatalog,
-		tracker MessageTracker) error
+import "context"
+
+// Source is a connector that reads data. C is its configuration struct; the
+// runner decodes the configuration JSON into it before every call.
+type Source[C any] interface {
+	// Spec returns the connector's capabilities and configuration schema.
+	Spec(ctx context.Context) (*ConnectorSpecification, error)
+	// Check verifies that cfg reaches the data. A non-nil error becomes a
+	// FAILED connection status whose message is err.Error().
+	Check(ctx context.Context, cfg C) error
+	// Discover returns the streams cfg gives access to.
+	Discover(ctx context.Context, cfg C) (*Catalog, error)
+	// Read emits the configured streams' records and state through em and
+	// returns nil when every stream is done. state is never nil.
+	Read(ctx context.Context, cfg C, catalog *ConfiguredCatalog, state *InputState, em *Emitter) error
 }

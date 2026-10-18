@@ -2,15 +2,17 @@
 package main
 
 import (
-	"log"
-	"os"
+	"context"
 
 	synclet "github.com/synclet-io/synclet-go-sdk"
+	"github.com/synclet-io/synclet-go-sdk/cli"
 )
+
+type config struct{}
 
 type greetingSource struct{}
 
-func (greetingSource) Spec(synclet.LogTracker) (*synclet.ConnectorSpecification, error) {
+func (greetingSource) Spec(context.Context) (*synclet.ConnectorSpecification, error) {
 	return &synclet.ConnectorSpecification{
 		ProtocolVersion:               "0.5.2",
 		SupportedDestinationSyncModes: []synclet.DestinationSyncMode{synclet.DestinationSyncModeOverwrite},
@@ -21,31 +23,27 @@ func (greetingSource) Spec(synclet.LogTracker) (*synclet.ConnectorSpecification,
 	}, nil
 }
 
-func (greetingSource) Check(string, synclet.LogTracker) error {
+func (greetingSource) Check(context.Context, config) error {
 	return nil
 }
 
-func (greetingSource) Discover(string, synclet.LogTracker) (*synclet.Catalog, error) {
+func (greetingSource) Discover(context.Context, config) (*synclet.Catalog, error) {
 	return &synclet.Catalog{Streams: []synclet.Stream{{
 		Name: "greetings",
-		JSONSchema: synclet.Properties{Properties: map[synclet.PropertyName]synclet.PropertySpec{
-			"text": {PropertyType: synclet.PropertyType{Type: []synclet.PropType{synclet.String}}},
-		}},
+		JSONSchema: synclet.ObjectSchema(map[synclet.PropertyName]synclet.PropertySpec{
+			"text": {PropertyType: synclet.PropertyType{Type: synclet.PropTypes{synclet.String}}},
+		}),
 		SupportedSyncModes: []synclet.SyncMode{synclet.SyncModeFullRefresh},
 	}}}, nil
 }
 
-func (greetingSource) Read(_, _ string, catalog *synclet.ConfiguredCatalog, tracker synclet.MessageTracker) error {
+func (greetingSource) Read(_ context.Context, _ config, catalog *synclet.ConfiguredCatalog, _ *synclet.InputState, em *synclet.Emitter) error {
 	for _, stream := range catalog.Streams {
-		if err := tracker.Record(map[string]any{"text": "hello"}, stream.Stream.Name, stream.Stream.Namespace); err != nil {
+		if err := em.Record(stream.Stream.Descriptor(), map[string]any{"text": "hello"}); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func main() {
-	if err := synclet.NewSourceRunner(greetingSource{}, os.Stdout).Start(); err != nil {
-		log.Fatal(err)
-	}
-}
+func main() { cli.RunSource(greetingSource{}) }

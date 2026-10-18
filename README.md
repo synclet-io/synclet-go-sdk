@@ -1,39 +1,81 @@
 # synclet-go-sdk
 
 A small Go SDK for writing connectors that speak the Airbyte protocol (v0.5.2). You implement a typed
-`Source` or `Destination` interface; the runner handles the `spec`, `check`, `discover`, `read` and `write`
-commands and writes protocol messages to stdout. The SDK is used by [Synclet](https://github.com/synclet-io/synclet)
-connectors and works with any orchestrator that runs Airbyte protocol connectors as Docker images.
+`Source` or `Destination` interface; package `cli` runs it as a process that handles the `spec`, `check`,
+`discover`, `read` and `write` commands and writes protocol messages to stdout. The SDK is used by
+[Synclet](https://github.com/synclet-io/synclet) connectors and works with any orchestrator that runs Airbyte
+protocol connectors as Docker images.
+
+The SDK covers only what the protocol needs: context, check result, record and state emission, logging and
+the transport. HTTP clients, pagination, SQL and retries are ordinary Go libraries.
 
 This module supersedes [`github.com/saturn4er/airbyte-go-sdk`](https://github.com/saturn4er/airbyte-go-sdk).
-To migrate, replace the import path with `github.com/synclet-io/synclet-go-sdk`; the package is named `synclet`.
+To migrate, replace the import path with `github.com/synclet-io/synclet-go-sdk` (package `synclet`) and
+follow [Migrating from v0.1](#migrating-from-v01).
 
 ## Install
 
 ```bash
-go get github.com/synclet-io/synclet-go-sdk@v0.1.0
+go get github.com/synclet-io/synclet-go-sdk@v0.2.0
 ```
 
 Requires Go 1.26 or newer.
 
-## Minimal source
-
-A source with one stream that emits one record per sync. The same program lives in
-[`examples/minimal`](examples/minimal/main.go) and is compiled by CI.
+## Interfaces
 
 ```go
+type Source[C any] interface {
+	Spec(ctx context.Context) (*ConnectorSpecification, error)
+	Check(ctx context.Context, cfg C) error
+	Discover(ctx context.Context, cfg C) (*Catalog, error)
+	Read(ctx context.Context, cfg C, catalog *ConfiguredCatalog, state *InputState, em *Emitter) error
+}
+
+type Destination[C any] interface {
+	Spec(ctx context.Context) (*ConnectorSpecification, error)
+	Check(ctx context.Context, cfg C) error
+	Write(ctx context.Context, cfg C, catalog *ConfiguredCatalog, in *MessageReader, em *Emitter) error
+}
+```
+
+- `C` is the connector's own config struct. The runner decodes the config JSON into it before every call
+  (unknown keys are ignored); a config that does not decode never reaches the connector.
+- Every method takes a `context.Context`. SIGTERM and SIGINT cancel it; the runner then emits a TRACE ERROR
+  and the process exits 1.
+- `Check` returning nil is `CONNECTION_STATUS SUCCEEDED`. An error is `CONNECTION_STATUS FAILED` with
+  `err.Error()` as the message the user sees, and exit 0.
+- `Read` gets the previous state (never nil) and emits records and state through the `Emitter`. `Write` reads
+  the incoming stream with `in.Next()` until `io.EOF` and echoes each STATE once the records before it are
+  committed.
+- `Emitter` is the only writer to the transport: `Record`, `StreamState`, `GlobalState`, `State`, `Log`,
+  `Trace` and `Control`, safe from any number of goroutines, one unbuffered write per message.
+- `ServeSource` and `ServeDestination` run one command over any `io.Writer`; they are the transport seam.
+  Tests and other transports call them with a `Request` and a buffer.
+- `Stream.JSONSchema` is raw JSON; `ObjectSchema(props)` builds `{"type":"object","properties":...}`.
+
+## main
+
+A connector's `main` hands the connector to `cli` and nothing else. `cli` is the only package that touches
+`os.Args`, stdin, stdout and files; it points `os.Stdout` at stderr before calling the connector, so a stray
+`fmt.Println` cannot corrupt the protocol stream. The smallest source, compiled by CI as
+[`examples/minimal`](examples/minimal/main.go):
+
+```go
+// Command minimal is the smallest source connector built on the SDK: one stream, full refresh.
 package main
 
 import (
-	"log"
-	"os"
+	"context"
 
 	synclet "github.com/synclet-io/synclet-go-sdk"
+	"github.com/synclet-io/synclet-go-sdk/cli"
 )
+
+type config struct{}
 
 type greetingSource struct{}
 
-func (greetingSource) Spec(synclet.LogTracker) (*synclet.ConnectorSpecification, error) {
+func (greetingSource) Spec(context.Context) (*synclet.ConnectorSpecification, error) {
 	return &synclet.ConnectorSpecification{
 		ProtocolVersion:               "0.5.2",
 		SupportedDestinationSyncModes: []synclet.DestinationSyncMode{synclet.DestinationSyncModeOverwrite},
@@ -44,55 +86,104 @@ func (greetingSource) Spec(synclet.LogTracker) (*synclet.ConnectorSpecification,
 	}, nil
 }
 
-func (greetingSource) Check(string, synclet.LogTracker) error {
+func (greetingSource) Check(context.Context, config) error {
 	return nil
 }
 
-func (greetingSource) Discover(string, synclet.LogTracker) (*synclet.Catalog, error) {
+func (greetingSource) Discover(context.Context, config) (*synclet.Catalog, error) {
 	return &synclet.Catalog{Streams: []synclet.Stream{{
 		Name: "greetings",
-		JSONSchema: synclet.Properties{Properties: map[synclet.PropertyName]synclet.PropertySpec{
-			"text": {PropertyType: synclet.PropertyType{Type: []synclet.PropType{synclet.String}}},
-		}},
+		JSONSchema: synclet.ObjectSchema(map[synclet.PropertyName]synclet.PropertySpec{
+			"text": {PropertyType: synclet.PropertyType{Type: synclet.PropTypes{synclet.String}}},
+		}),
 		SupportedSyncModes: []synclet.SyncMode{synclet.SyncModeFullRefresh},
 	}}}, nil
 }
 
-func (greetingSource) Read(_, _ string, catalog *synclet.ConfiguredCatalog, tracker synclet.MessageTracker) error {
+func (greetingSource) Read(_ context.Context, _ config, catalog *synclet.ConfiguredCatalog, _ *synclet.InputState, em *synclet.Emitter) error {
 	for _, stream := range catalog.Streams {
-		if err := tracker.Record(map[string]any{"text": "hello"}, stream.Stream.Name, stream.Stream.Namespace); err != nil {
+		if err := em.Record(stream.Stream.Descriptor(), map[string]any{"text": "hello"}); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func main() {
-	if err := synclet.NewSourceRunner(greetingSource{}, os.Stdout).Start(); err != nil {
-		log.Fatal(err)
-	}
-}
+func main() { cli.RunSource(greetingSource{}) }
 ```
-
-Build and run it like any connector:
 
 ```bash
 go build -o greeting ./examples/minimal
 ./greeting spec
 ./greeting check --config config.json
 ./greeting discover --config config.json
-./greeting read --config config.json --catalog catalog.json
+./greeting read --config config.json --catalog catalog.json [--state state.json]
 ```
 
-## What is in the module
+A destination built with `cli.RunDestination` runs `write --config config.json --catalog catalog.json`
+with the record stream on stdin. Flags may come in any order. An unknown command, a missing flag or an unreadable file prints usage on stderr
+and exits 2; a failed command, a cancellation or a panic exits 1 after one TRACE ERROR.
+[`examples/httpsource`](examples/httpsource) is a fuller source that reads an HTTP API with the context,
+emits estimates and per-stream state.
 
-- `Source` and `Destination` interfaces, run by `NewSourceRunner` and `NewDestinationRunner`.
-- `MessageTracker`: thread-safe writers for records, state (STREAM, GLOBAL, LEGACY), logs, traces and control messages.
-- Protocol types: connector specification, catalog, configured catalog, stream state, trace and estimate messages.
-- `InferSchemaFromStruct` and the `schema` package to derive a stream's JSON schema from a Go struct.
-- `LoadStreamStates` and `UnmarshalFromPath` to read the input state and config files.
+## State
 
-[`examples/httpsource`](examples/httpsource) is a fuller source that reads an HTTP API, emits estimates and state.
+`state.Stream(desc)` returns a stream's saved state as raw JSON (nil when there is none); decode your own
+cursor struct from it. `InputState` accepts every shape Synclet writes: no state, STREAM entries, one GLOBAL
+state (`Shared` plus `Streams`) and LEGACY state (`Legacy`), with type names in any case.
+
+```go
+for _, cs := range catalog.Streams {
+	desc := cs.Stream.Descriptor()
+	var cur cursor
+	if raw := state.Stream(desc); raw != nil {
+		if err := json.Unmarshal(raw, &cur); err != nil {
+			return err
+		}
+	}
+	// em.Record(desc, row) for each row, then:
+	if err := em.StreamState(desc, cur); err != nil {
+		return err
+	}
+}
+```
+
+Emit a state only after the records it covers. Synclet persists a state when the destination echoes it, so a
+checkpoint every N rows bounds what a crash replays. CDC sources emit `em.GlobalState(position, perStream)`.
+
+## Logging
+
+`synclet.Logger(ctx)` is a `*slog.Logger` whose lines reach Synclet as LOG messages (Debug, Info, Warn and
+Error map to DEBUG, INFO, WARN and ERROR; attributes are appended as `key=value`). Outside a runner it is
+`slog.Default()`. The cli also sets `slog.Default()` to the protocol logger, so libraries that log through
+slog reach Synclet too; the `log` package writes to stderr.
+
+## Errors
+
+An error returned from a call becomes one TRACE ERROR with `err.Error()` as its message and exit 1. Wrap it
+with `synclet.ConfigError(err)` when the configuration is at fault, which sets `failure_type: config_error`;
+anything else is `system_error`. A panic becomes a TRACE ERROR with a stack trace; a cancelled context gives
+`cancelled: <ctx error>`. A panic in a goroutine the connector started is not recovered.
+
+## Migrating from v0.1
+
+v0.2.0 removes the v0.1 runner API with no shims.
+
+| v0.1 | v0.2 |
+|---|---|
+| `synclet.NewSourceRunner(src, os.Stdout).Start()` | `cli.RunSource(src)` |
+| `synclet.NewDestinationRunner(dst, os.Stdout).Start()` | `cli.RunDestination(dst)` |
+| `Check(path string, logTracker)` with `UnmarshalFromPath` | `Check(ctx, cfg Config)`; the config arrives decoded |
+| `logTracker.Log(level, msg)` | `synclet.Logger(ctx).Info(msg, "key", value)` |
+| `context.Background()` | the `ctx` parameter |
+| `tracker.Record(data, name, ns)` | `em.Record(desc, data)` |
+| `tracker.State(StateTypeStream, ...)`, `LoadStreamStates` | `em.StreamState(desc, v)`, `state.Stream(desc)` |
+| GLOBAL state by hand | `em.GlobalState(shared, perStream)`, `state.Shared` |
+| `EmitEstimate`, `EmitError` | `em.Trace(TraceMessage{...})`; return the error for a fatal failure |
+| `bufio.Scanner` over stdin in `Write` | `in.Next()` |
+| `JSONSchema: synclet.Properties{...}` | `JSONSchema: synclet.ObjectSchema(props)` |
+| `FormatType` `"datetime"` | `synclet.DateTime` (`"date-time"`), `Date`, `Time` |
+| `AnalyticsTrace.Value` map | string |
 
 ## Development
 

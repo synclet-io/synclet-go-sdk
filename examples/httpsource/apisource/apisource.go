@@ -1,6 +1,9 @@
+// Package apisource is an example source that reads two streams from the
+// DummyJSON HTTP API.
 package apisource
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -9,39 +12,41 @@ import (
 	synclet "github.com/synclet-io/synclet-go-sdk"
 )
 
-type APISource struct {
-	baseURL string
+// Config is the source's configuration.
+type Config struct {
+	Limit int `json:"limit"`
 }
 
-type LastSyncTime struct {
+func (c *Config) applyDefaults() {
+	if c.Limit <= 0 {
+		c.Limit = 30
+	}
+}
+
+// LastSync is the state saved for each stream.
+type LastSync struct {
 	Timestamp int64 `json:"timestamp"`
 }
 
-type HTTPConfig struct {
-	// DummyJSON doesn't require authentication
-	Limit int `json:"limit"` // Optional: limit number of records (default: 30)
+// APISource reads the users and products streams of a DummyJSON server.
+type APISource struct {
+	baseURL string
+	client  *http.Client
 }
 
-func NewAPISource(baseURL string) synclet.Source {
-	return APISource{
-		baseURL: baseURL,
-	}
+// New returns a source reading from baseURL.
+func New(baseURL string) *APISource {
+	return &APISource{baseURL: baseURL, client: &http.Client{Timeout: 30 * time.Second}}
 }
 
-func (h APISource) Spec(logTracker synclet.LogTracker) (*synclet.ConnectorSpecification, error) {
-	if err := logTracker.Log(synclet.LogLevelInfo, "Running Spec"); err != nil {
-		return nil, err
-	}
+func (s *APISource) Spec(context.Context) (*synclet.ConnectorSpecification, error) {
 	return &synclet.ConnectorSpecification{
-		DocumentationURL:      "https://dummyjson.com",
-		ChangeLogURL:          "https://github.com/synclet-io/synclet-go-sdk",
-		SupportsIncremental:   false,
-		SupportsNormalization: true,
-		SupportsDBT:           true,
+		DocumentationURL: "https://dummyjson.com",
+		ChangeLogURL:     "https://github.com/synclet-io/synclet-go-sdk",
 		SupportedDestinationSyncModes: []synclet.DestinationSyncMode{
 			synclet.DestinationSyncModeOverwrite,
 		},
-		ProtocolVersion: "0.5.2", // Airbyte Protocol v0.5.2
+		ProtocolVersion: "0.5.2",
 		ConnectionSpecification: synclet.ConnectionSpecification{
 			Title:       "DummyJSON Source",
 			Description: "Example source connector that fetches data from dummyjson.com API",
@@ -50,13 +55,9 @@ func (h APISource) Spec(logTracker synclet.LogTracker) (*synclet.ConnectorSpecif
 			Properties: synclet.Properties{
 				Properties: map[synclet.PropertyName]synclet.PropertySpec{
 					"limit": {
-						Description: "Maximum number of records to fetch per stream (default: 30)",
-						Examples:    []string{"10", "30", "100"},
-						PropertyType: synclet.PropertyType{
-							Type: []synclet.PropType{
-								synclet.Integer,
-							},
-						},
+						Description:  "Maximum number of records to fetch per stream (default: 30)",
+						Examples:     []string{"10", "30", "100"},
+						PropertyType: synclet.PropertyType{Type: synclet.PropTypes{synclet.Integer}},
 					},
 				},
 			},
@@ -64,137 +65,50 @@ func (h APISource) Spec(logTracker synclet.LogTracker) (*synclet.ConnectorSpecif
 	}, nil
 }
 
-func (h APISource) Check(srcCfgPath string, logTracker synclet.LogTracker) error {
-	if err := logTracker.Log(synclet.LogLevelDebug, "validating api connection"); err != nil {
-		return err
+func (s *APISource) Check(ctx context.Context, _ Config) error {
+	var u User
+	if err := s.get(ctx, "/users/1", &u); err != nil {
+		return fmt.Errorf("cannot reach DummyJSON API: %w", err)
 	}
-	var srcCfg HTTPConfig
-	err := synclet.UnmarshalFromPath(srcCfgPath, &srcCfg)
-	if err != nil {
-		return err
-	}
-
-	// Test connection by fetching a single user
-	resp, err := http.Get(fmt.Sprintf("%s/users/1", h.baseURL))
-	if err != nil {
-		return fmt.Errorf("failed to connect to DummyJSON API: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code from DummyJSON API: %d", resp.StatusCode)
-	}
-
 	return nil
 }
 
-func (h APISource) Discover(srcCfgPath string, logTracker synclet.LogTracker) (*synclet.Catalog, error) {
-	var srcCfg HTTPConfig
-	err := synclet.UnmarshalFromPath(srcCfgPath, &srcCfg)
-	if err != nil {
-		return nil, err
-	}
-
+func (s *APISource) Discover(context.Context, Config) (*synclet.Catalog, error) {
 	return &synclet.Catalog{Streams: []synclet.Stream{
 		{
 			Name: "users",
-			JSONSchema: synclet.Properties{
-				Properties: map[synclet.PropertyName]synclet.PropertySpec{
-					"id": {
-						PropertyType: synclet.PropertyType{
-							Type: []synclet.PropType{synclet.Integer},
-						},
-						Description: "User ID",
-					},
-					"firstName": {
-						PropertyType: synclet.PropertyType{
-							Type: []synclet.PropType{synclet.String},
-						},
-						Description: "First name",
-					},
-					"lastName": {
-						PropertyType: synclet.PropertyType{
-							Type: []synclet.PropType{synclet.String},
-						},
-						Description: "Last name",
-					},
-					"email": {
-						PropertyType: synclet.PropertyType{
-							Type: []synclet.PropType{synclet.String},
-						},
-						Description: "Email address",
-					},
-					"phone": {
-						PropertyType: synclet.PropertyType{
-							Type: []synclet.PropType{synclet.String},
-						},
-						Description: "Phone number",
-					},
-					"age": {
-						PropertyType: synclet.PropertyType{
-							Type: []synclet.PropType{synclet.Integer},
-						},
-						Description: "Age",
-					},
-				},
-			},
-			SupportedSyncModes: []synclet.SyncMode{
-				synclet.SyncModeFullRefresh,
-			},
-			SourceDefinedCursor: false,
-			Namespace:           "dummyjson",
+			JSONSchema: synclet.ObjectSchema(map[synclet.PropertyName]synclet.PropertySpec{
+				"id":        prop(synclet.Integer, "User ID"),
+				"firstName": prop(synclet.String, "First name"),
+				"lastName":  prop(synclet.String, "Last name"),
+				"email":     prop(synclet.String, "Email address"),
+				"phone":     prop(synclet.String, "Phone number"),
+				"age":       prop(synclet.Integer, "Age"),
+			}),
+			SupportedSyncModes: []synclet.SyncMode{synclet.SyncModeFullRefresh},
+			Namespace:          "dummyjson",
 		},
 		{
 			Name: "products",
-			JSONSchema: synclet.Properties{
-				Properties: map[synclet.PropertyName]synclet.PropertySpec{
-					"id": {
-						PropertyType: synclet.PropertyType{
-							Type: []synclet.PropType{synclet.Integer},
-						},
-						Description: "Product ID",
-					},
-					"title": {
-						PropertyType: synclet.PropertyType{
-							Type: []synclet.PropType{synclet.String},
-						},
-						Description: "Product title",
-					},
-					"description": {
-						PropertyType: synclet.PropertyType{
-							Type: []synclet.PropType{synclet.String},
-						},
-						Description: "Product description",
-					},
-					"price": {
-						PropertyType: synclet.PropertyType{
-							Type: []synclet.PropType{synclet.Number},
-						},
-						Description: "Product price",
-					},
-					"category": {
-						PropertyType: synclet.PropertyType{
-							Type: []synclet.PropType{synclet.String},
-						},
-						Description: "Product category",
-					},
-					"brand": {
-						PropertyType: synclet.PropertyType{
-							Type: []synclet.PropType{synclet.String},
-						},
-						Description: "Product brand",
-					},
-				},
-			},
-			SupportedSyncModes: []synclet.SyncMode{
-				synclet.SyncModeFullRefresh,
-			},
-			SourceDefinedCursor: false,
-			Namespace:           "dummyjson",
+			JSONSchema: synclet.ObjectSchema(map[synclet.PropertyName]synclet.PropertySpec{
+				"id":          prop(synclet.Integer, "Product ID"),
+				"title":       prop(synclet.String, "Product title"),
+				"description": prop(synclet.String, "Product description"),
+				"price":       prop(synclet.Number, "Product price"),
+				"category":    prop(synclet.String, "Product category"),
+				"brand":       prop(synclet.String, "Product brand"),
+			}),
+			SupportedSyncModes: []synclet.SyncMode{synclet.SyncModeFullRefresh},
+			Namespace:          "dummyjson",
 		},
 	}}, nil
 }
 
+func prop(t synclet.PropType, desc string) synclet.PropertySpec {
+	return synclet.PropertySpec{Description: desc, PropertyType: synclet.PropertyType{Type: synclet.PropTypes{t}}}
+}
+
+// User is one row of the users stream.
 type User struct {
 	ID        int    `json:"id"`
 	FirstName string `json:"firstName"`
@@ -204,6 +118,7 @@ type User struct {
 	Age       int    `json:"age"`
 }
 
+// Product is one row of the products stream.
 type Product struct {
 	ID          int     `json:"id"`
 	Title       string  `json:"title"`
@@ -213,100 +128,75 @@ type Product struct {
 	Brand       string  `json:"brand"`
 }
 
-type UsersResponse struct {
-	Users []User `json:"users"`
-	Total int    `json:"total"`
-	Skip  int    `json:"skip"`
-	Limit int    `json:"limit"`
-}
+func (s *APISource) Read(ctx context.Context, cfg Config, cat *synclet.ConfiguredCatalog, st *synclet.InputState, em *synclet.Emitter) error {
+	cfg.applyDefaults()
+	log := synclet.Logger(ctx)
+	for _, cs := range cat.Streams {
+		desc := cs.Stream.Descriptor()
+		var last LastSync
+		if raw := st.Stream(desc); raw != nil {
+			if err := json.Unmarshal(raw, &last); err != nil {
+				return fmt.Errorf("state of %s: %w", desc.Name, err)
+			}
+		}
+		log.Info("reading", "stream", desc.Name, "last_sync", last.Timestamp)
 
-type ProductsResponse struct {
-	Products []Product `json:"products"`
-	Total    int       `json:"total"`
-	Skip     int       `json:"skip"`
-	Limit    int       `json:"limit"`
-}
+		rows := int64(cfg.Limit)
+		if err := em.Trace(synclet.TraceMessage{
+			Type:     synclet.TraceTypeEstimate,
+			Estimate: &synclet.EstimateTrace{Name: desc.Name, Namespace: desc.Namespace, Type: synclet.EstimateTypeStream, RowEstimate: &rows},
+		}); err != nil {
+			return err
+		}
 
-func (h APISource) Read(sourceCfgPath string, prevStatePath string, configuredCat *synclet.ConfiguredCatalog,
-	tracker synclet.MessageTracker) error {
-	if err := tracker.Log(synclet.LogLevelInfo, "Running read"); err != nil {
-		return err
+		var err error
+		switch desc.Name {
+		case "users":
+			err = readStream(ctx, s, em, desc, fmt.Sprintf("/users?limit=%d", cfg.Limit), func(r struct{ Users []User }) []User { return r.Users })
+		case "products":
+			err = readStream(ctx, s, em, desc, fmt.Sprintf("/products?limit=%d", cfg.Limit), func(r struct{ Products []Product }) []Product { return r.Products })
+		default:
+			err = synclet.ConfigError(fmt.Errorf("unknown stream %q", desc.Name))
+		}
+		if err != nil {
+			return err
+		}
+		if err := em.StreamState(desc, LastSync{Timestamp: time.Now().UnixMilli()}); err != nil {
+			return err
+		}
 	}
-	var src HTTPConfig
-	err := synclet.UnmarshalFromPath(sourceCfgPath, &src)
+	return nil
+}
+
+func readStream[R, T any](ctx context.Context, s *APISource, em *synclet.Emitter, desc synclet.StreamDescriptor, path string, rows func(R) []T) error {
+	var resp R
+	if err := s.get(ctx, path, &resp); err != nil {
+		return fmt.Errorf("fetch %s: %w", desc.Name, err)
+	}
+	for _, row := range rows(resp) {
+		if err := em.Record(desc, row); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *APISource) get(ctx context.Context, path string, v any) (rerr error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.baseURL+path, nil)
 	if err != nil {
 		return err
 	}
-
-	// Set default limit if not specified
-	limit := src.Limit
-	if limit == 0 {
-		limit = 30
-	}
-
-	// see if there is a last sync
-	var st LastSyncTime
-	_ = synclet.UnmarshalFromPath(sourceCfgPath, &st)
-	if st.Timestamp <= 0 {
-		st.Timestamp = -1
-	}
-
-	for _, stream := range configuredCat.Streams {
-		if stream.Stream.Name == "users" {
-			// Emit estimate for progress tracking (protocol v0.5.2 feature)
-			rowEstimate := int64(limit)
-			if err := synclet.EmitEstimate(tracker.Trace, stream.Stream.Name, &stream.Stream.Namespace,
-				synclet.EstimateTypeStream, &rowEstimate, nil); err != nil {
-				_ = tracker.Log(synclet.LogLevelWarn, fmt.Sprintf("Failed to emit estimate: %v", err))
-			}
-
-			var usersResp UsersResponse
-			uri := fmt.Sprintf("%s/users?limit=%d", h.baseURL, limit)
-			if err := httpGet(uri, &usersResp); err != nil {
-				return fmt.Errorf("failed to fetch users: %w", err)
-			}
-
-			for _, user := range usersResp.Users {
-				err := tracker.Record(user, stream.Stream.Name, stream.Stream.Namespace)
-				if err != nil {
-					return err
-				}
-			}
-		}
-
-		if stream.Stream.Name == "products" {
-			// Emit estimate for progress tracking (protocol v0.5.2 feature)
-			rowEstimate := int64(limit)
-			if err := synclet.EmitEstimate(tracker.Trace, stream.Stream.Name, &stream.Stream.Namespace,
-				synclet.EstimateTypeStream, &rowEstimate, nil); err != nil {
-				_ = tracker.Log(synclet.LogLevelWarn, fmt.Sprintf("Failed to emit estimate: %v", err))
-			}
-
-			var productsResp ProductsResponse
-			uri := fmt.Sprintf("%s/products?limit=%d", h.baseURL, limit)
-			if err := httpGet(uri, &productsResp); err != nil {
-				return fmt.Errorf("failed to fetch products: %w", err)
-			}
-
-			for _, product := range productsResp.Products {
-				err := tracker.Record(product, stream.Stream.Name, stream.Stream.Namespace)
-				if err != nil {
-					return err
-				}
-			}
-		}
-	}
-
-	return tracker.State(synclet.StateTypeLegacy, &LastSyncTime{
-		Timestamp: time.Now().UnixMilli(),
-	})
-}
-
-func httpGet(uri string, v interface{}) error {
-	resp, err := http.Get(uri)
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil && rerr == nil {
+			rerr = cerr
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status %d", resp.StatusCode)
+	}
 	return json.NewDecoder(resp.Body).Decode(v)
 }
