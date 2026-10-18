@@ -87,12 +87,18 @@ func ParseInputState(b []byte) (*InputState, error) {
 			}
 			st.Streams = append(st.Streams, *m.Stream)
 		case StateTypeGlobal:
+			if i > 0 {
+				return nil, fmt.Errorf("state entry %d: more than one GLOBAL", i)
+			}
 			if m.Global == nil {
 				return nil, fmt.Errorf("state entry %d: GLOBAL without global", i)
 			}
 			st.Shared = m.Global.SharedState
 			st.Streams = append(st.Streams, m.Global.StreamStates...)
 		case StateTypeLegacy:
+			if i > 0 {
+				return nil, fmt.Errorf("state entry %d: more than one LEGACY", i)
+			}
 			st.Legacy = m.Data
 		default:
 			return nil, fmt.Errorf("state entry %d: unknown state type %q", i, m.Type)

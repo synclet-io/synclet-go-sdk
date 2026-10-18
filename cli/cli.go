@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -45,15 +46,22 @@ func RunDestination[C any](dst synclet.Destination[C]) {
 		}))
 }
 
-// runProcess points os.Stdout at stderr so that only the protocol stream
-// reaches stdout, and cancels ctx on SIGTERM and SIGINT.
+// runProcess sends everything but the protocol stream that would reach stdout
+// to stderr, and cancels ctx on SIGTERM and SIGINT.
 func runProcess(ctx context.Context, args []string, stdin io.Reader, stdout, stderr *os.File, serve serveFunc) int {
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
-	saved := os.Stdout
-	os.Stdout = stderr
-	defer func() { os.Stdout = saved }()
-	return run(ctx, args, stdin, stdout, stderr, serve)
+	protocol, restore, err := redirectStdout(stdout, stderr)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 1
+	}
+	defer func() {
+		if err := restore(); err != nil {
+			_, _ = fmt.Fprintln(stderr, err)
+		}
+	}()
+	return run(ctx, args, stdin, protocol, stderr, serve)
 }
 
 func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveFunc) int {
@@ -63,9 +71,15 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return 2
 	}
 	out := &lockedWriter{w: stdout}
-	saved := slog.Default()
+	saved, logOutput, logFlags := slog.Default(), log.Writer(), log.Flags()
 	slog.SetDefault(synclet.NewLogger(synclet.NewEmitter(out), slog.LevelInfo))
-	defer slog.SetDefault(saved)
+	log.SetOutput(stderr)
+	log.SetFlags(logFlags)
+	defer func() {
+		slog.SetDefault(saved)
+		log.SetOutput(logOutput)
+		log.SetFlags(logFlags)
+	}()
 	if err := serve(ctx, req, out); err != nil {
 		return 1
 	}

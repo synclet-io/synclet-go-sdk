@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,6 +26,8 @@ import (
 type config struct {
 	Mode string `json:"mode"`
 }
+
+var initStdout = os.Stdout
 
 type testSource struct{}
 
@@ -50,6 +53,9 @@ func (testSource) Read(ctx context.Context, cfg config, cat *synclet.ConfiguredC
 		}
 		<-ctx.Done()
 		return ctx.Err()
+	case "captured":
+		_, _ = fmt.Fprint(initStdout, "captured at init")
+		return em.Record(desc, map[string]int{"id": 1})
 	case "panic":
 		panic("boom")
 	}
@@ -215,6 +221,30 @@ func TestCLIStrayStdout(t *testing.T) {
 	assert.Equal(t, 0, code, string(stderr))
 	assertProtocol(t, stdout)
 	assert.Contains(t, string(stderr), "stray print")
+}
+
+func TestCLILogPackage(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run(context.Background(), []string{"spec"}, strings.NewReader(""), &stdout, &stderr,
+		func(context.Context, synclet.Request, io.Writer) error {
+			log.Print("from log pkg")
+			return nil
+		})
+	assert.Equal(t, 0, code)
+	assert.NotContains(t, stdout.String(), "from log pkg")
+	assert.Contains(t, stderr.String(), "from log pkg")
+}
+
+func TestCLICapturedStdout(t *testing.T) {
+	cfg, cat, _ := writeFiles(t, "captured")
+	cmd := helper(t, "source", "read", "--config", cfg, "--catalog", cat)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	require.NoError(t, err, stderr.String())
+	msgs := assertProtocol(t, out)
+	assert.Len(t, msgs, 1)
+	assert.Contains(t, stderr.String(), "captured at init")
 }
 
 func assertProtocol(t *testing.T, out []byte) []synclet.Message {

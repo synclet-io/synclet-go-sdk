@@ -56,8 +56,10 @@ type Destination[C any] interface {
 ## main
 
 A connector's `main` hands the connector to `cli` and nothing else. `cli` is the only package that touches
-`os.Args`, stdin, stdout and files; it points `os.Stdout` at stderr before calling the connector, so a stray
-`fmt.Println` cannot corrupt the protocol stream. The smallest source, compiled by CI as
+`os.Args`, stdin, stdout and files. On Linux, macOS and the BSDs it moves the protocol stream to a
+duplicate of descriptor 1 and points descriptor 1 at stderr before calling the connector, so a stray
+`fmt.Println`, a logger holding `os.Stdout` or a raw write to descriptor 1 cannot corrupt the protocol
+stream; elsewhere it points the `os.Stdout` variable at stderr. The smallest source, compiled by CI as
 [`examples/minimal`](examples/minimal/main.go):
 
 ```go
@@ -184,6 +186,7 @@ v0.2.0 removes the v0.1 runner API with no shims.
 | `JSONSchema: synclet.Properties{...}` | `JSONSchema: synclet.ObjectSchema(props)` |
 | `FormatType` `"datetime"` | `synclet.DateTime` (`"date-time"`), `Date`, `Time` |
 | `AnalyticsTrace.Value` map | string |
+| `InferSchemaFromStruct(v, logTracker) Properties` | `InferSchemaFromStruct(v) (Properties, error)` |
 
 ## Development
 

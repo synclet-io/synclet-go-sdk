@@ -49,6 +49,19 @@ func TestParseInputState(t *testing.T) {
 		assert.Nil(t, st.Stream(orders))
 	})
 
+	t.Run("more than one global", func(t *testing.T) {
+		_, err := ParseInputState([]byte(`[
+			{"type":"GLOBAL","global":{"shared_state":{"binlog":"1"},"stream_states":[]}},
+			{"type":"GLOBAL","global":{"shared_state":{"binlog":"2"},"stream_states":[]}}
+		]`))
+		assert.ErrorContains(t, err, "more than one GLOBAL")
+	})
+
+	t.Run("more than one legacy", func(t *testing.T) {
+		_, err := ParseInputState([]byte(`[{"type":"LEGACY","data":{"a":1}},{"type":"LEGACY","data":{"a":2}}]`))
+		assert.ErrorContains(t, err, "more than one LEGACY")
+	})
+
 	t.Run("legacy entry", func(t *testing.T) {
 		st, err := ParseInputState([]byte(`[{"type":"LEGACY","data":{"timestamp":42}}]`))
 		require.NoError(t, err)
