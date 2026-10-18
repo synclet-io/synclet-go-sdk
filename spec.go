@@ -15,7 +15,7 @@ type ConnectorSpecification struct {
 
 // Properties is the "properties" keyword of a JSON schema object.
 type Properties struct {
-	Properties map[PropertyName]PropertySpec `json:"properties"`
+	Properties map[PropertyName]PropertySpec `json:"properties,omitempty"`
 }
 
 // PropertyName is the key of a property in a JSON schema object.
@@ -27,7 +27,7 @@ type ConnectionSpecification struct {
 	Description string `json:"description"`
 	Properties
 	Type     string         `json:"type"`
-	Required []PropertyName `json:"required"`
+	Required []PropertyName `json:"required,omitempty"`
 }
 
 // PropType is a JSON schema type. See https://docs.airbyte.com/understanding-airbyte/supported-data-types
