@@ -16,7 +16,7 @@ follow [Migrating from v0.1](#migrating-from-v01).
 ## Install
 
 ```bash
-go get github.com/synclet-io/synclet-go-sdk@v0.2.0
+go get github.com/synclet-io/synclet-go-sdk@v0.3.0
 ```
 
 Requires Go 1.26 or newer.
@@ -166,6 +166,55 @@ An error returned from a call becomes one TRACE ERROR with `err.Error()` as its 
 with `synclet.ConfigError(err)` when the configuration is at fault, which sets `failure_type: config_error`;
 anything else is `system_error`. A panic becomes a TRACE ERROR with a stack trace; a cancelled context gives
 `cancelled: <ctx error>`. A panic in a goroutine the connector started is not recovered.
+
+## Testing
+
+Package `testkit` runs a connector in memory through `ServeSource` and `ServeDestination` and parses what it
+writes. One call checks the protocol contract of a source:
+
+```go
+func TestProtocol(t *testing.T) {
+	var catalog synclet.ConfiguredCatalog
+	raw, err := os.ReadFile("testdata/catalog.json")
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(raw, &catalog))
+
+	testkit.RunSourceSuite(t, mysource.New(), testkit.SourceSuite{
+		Config:       json.RawMessage(`{"host":"localhost","port":5432}`),
+		BrokenConfig: json.RawMessage(`{"host":"localhost","port":1}`),
+		Catalog:      &catalog,
+	})
+}
+```
+
+The suite reports through `t.Errorf` when:
+
+- the spec's `connectionSpecification` is not a valid JSON schema;
+- check fails with `Config`, or does not fail with a message with `BrokenConfig`;
+- discover returns no streams, or a stream whose `json_schema` is invalid or has no properties;
+- read emits a record of a stream the catalog does not configure, or one that does not validate against its
+  stream's `json_schema` or has a top-level field the schema does not declare (unless it sets
+  `additionalProperties`);
+- a record follows its stream's last STATE, or an incremental stream emits records and no STATE;
+- a second read from the first read's last STATE emits a record of an incremental stream whose cursor is
+  older than the greatest cursor of the first read. The cursor is `default_cursor_field` for a
+  source-defined cursor and the configured `cursor_field` otherwise; numbers, RFC 3339 timestamps and
+  strings compare out of the box, and `SourceSuite.CompareCursor` orders anything else;
+- read keeps running 5 seconds after its context is cancelled at its first message.
+
+The connector brings its own fixtures (an HTTP test server, a database container) with ordinary libraries;
+`testkit` only drives the protocol. For checks of its own, a test runs one command and inspects the output:
+
+```go
+out, err := testkit.RunSource(ctx, src, synclet.Request{Command: synclet.CommandRead, Config: cfg, Catalog: cat})
+require.NoError(t, err)
+require.NoError(t, out.Err)
+users := out.Records(synclet.StreamDescriptor{Name: "users", Namespace: "public"})
+states, logs := out.States(), out.Logs()
+next := out.NextState() // the state file of the following read
+```
+
+`testkit.RunDestination` does the same for a destination with the record stream in `Request.Input`.
 
 ## Migrating from v0.1
 
