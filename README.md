@@ -196,11 +196,16 @@ The suite reports through `t.Errorf` when:
   stream's `json_schema` or has a top-level field the schema does not declare (unless it sets
   `additionalProperties`);
 - a record follows its stream's last STATE, or an incremental stream emits records and no STATE;
-- a second read from the first read's last STATE emits a record of an incremental stream whose cursor is
-  older than the greatest cursor of the first read. The cursor is `default_cursor_field` for a
-  source-defined cursor and the configured `cursor_field` otherwise; numbers, RFC 3339 timestamps and
-  strings compare out of the box, and `SourceSuite.CompareCursor` orders anything else;
-- read keeps running 5 seconds after its context is cancelled at its first message.
+- an incremental stream emits records none of which has a value at its cursor field, or a second read from
+  the first read's last STATE emits a record whose cursor is older than the greatest cursor of the first
+  read. The cursor is `default_cursor_field` for a source-defined cursor and the configured `cursor_field`
+  otherwise; numbers, RFC 3339 timestamps and strings compare out of the box, and
+  `SourceSuite.CompareCursor` orders anything else. A source that re-reads a window before its saved
+  cursor sets `SourceSuite.Lookback` to return the oldest cursor value the second read may emit;
+- read keeps running 5 seconds after its context is cancelled at its first message. This catches a read that
+  blocks, sleeps or retries past cancellation. A read that ignores its context but finishes its fixtures
+  sooner passes, so to exercise the check, make the fixtures outlast the first message, for example with a
+  test server that holds a response until the request's context ends.
 
 The connector brings its own fixtures (an HTTP test server, a database container) with ordinary libraries;
 `testkit` only drives the protocol. For checks of its own, a test runs one command and inspects the output:

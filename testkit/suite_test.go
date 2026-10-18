@@ -3,6 +3,7 @@ package testkit_test
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	synclet "github.com/synclet-io/synclet-go-sdk"
 	"github.com/synclet-io/synclet-go-sdk/testkit"
 )
 
@@ -74,6 +76,14 @@ func TestSourceSuiteDetects(t *testing.T) {
 		{faultOutsideSchema, "read: stream app.users: 3 record(s) outside json_schema"},
 		{faultWrongType, "read: stream app.users: 3 record(s) outside json_schema"},
 		{faultStateFirst, "state: stream app.users: 3 record(s) after its last STATE"},
+		{faultCheckRejectsValid, "check: valid config: status FAILED: token rejected"},
+		{faultCheckNoMessage, "check: broken config: FAILED without a message"},
+		{faultNoStreams, "discover: no streams"},
+		{faultInvalidSchema, "discover: stream app.users: json_schema is not a valid JSON schema"},
+		{faultNoRecords, "read: no records"},
+		{faultNoState, "state: incremental stream app.users emitted 3 record(s) and no STATE"},
+		{faultNoCursorValue, "incremental: stream app.users: 3 record(s) and none has a value at cursor field updated_at"},
+		{faultLookback, "incremental: stream app.orders: 1 record(s) older than the cursor 20"},
 		{faultIgnoresCursor, "incremental: stream app.users: 2 record(s) older than the cursor 2026-01-03T00:00:00Z"},
 	}
 	for _, tt := range tests {
@@ -127,6 +137,32 @@ func TestCompareCursor(t *testing.T) {
 	})
 	assert.Positive(t, calls)
 	assert.Empty(t, rec.errs)
+}
+
+func TestSourceSuiteLookback(t *testing.T) {
+	src := newTableSource()
+	src.fault = faultLookback
+	var streams []string
+	rec := &recorder{TB: t}
+	testkit.RunSourceSuite(rec, src, testkit.SourceSuite{
+		Config:       json.RawMessage(validConfig),
+		BrokenConfig: json.RawMessage(brokenConfig),
+		Catalog:      configuredCatalog(src),
+		Lookback: func(desc synclet.StreamDescriptor, cursor any) (any, error) {
+			streams = append(streams, desc.Name)
+			n, ok := cursor.(json.Number)
+			if !ok {
+				return cursor, nil
+			}
+			v, err := n.Int64()
+			if err != nil {
+				return nil, err
+			}
+			return json.Number(strconv.FormatInt(v-10, 10)), nil
+		},
+	})
+	assert.Empty(t, rec.errs)
+	assert.ElementsMatch(t, []string{"users", "orders"}, streams)
 }
 
 func TestSourceSuiteInitialState(t *testing.T) {

@@ -33,6 +33,14 @@ const (
 	faultStateFirst         fault = "state before records"
 	faultIgnoresCursor      fault = "second read ignores the cursor"
 	faultIgnoresCancel      fault = "read ignores cancellation"
+	faultCheckRejectsValid  fault = "check rejects a valid config"
+	faultCheckNoMessage     fault = "check fails without a message"
+	faultNoStreams          fault = "discover returns no streams"
+	faultInvalidSchema      fault = "invalid stream schema"
+	faultNoRecords          fault = "read emits no records"
+	faultNoState            fault = "incremental read emits no state"
+	faultNoCursorValue      fault = "records without a cursor value"
+	faultLookback           fault = "second read re-reads a lookback window"
 )
 
 type tableStream struct {
@@ -114,7 +122,12 @@ func (s *tableSource) Spec(context.Context) (*synclet.ConnectorSpecification, er
 }
 
 func (s *tableSource) Check(_ context.Context, cfg tableConfig) error {
-	if cfg.Token == "" && s.fault != faultCheckIgnoresConfig {
+	switch {
+	case s.fault == faultCheckRejectsValid:
+		return errors.New("token rejected")
+	case cfg.Token == "" && s.fault == faultCheckNoMessage:
+		return errors.New(" ")
+	case cfg.Token == "" && s.fault != faultCheckIgnoresConfig:
 		return errors.New("token is required")
 	}
 	return nil
@@ -122,10 +135,16 @@ func (s *tableSource) Check(_ context.Context, cfg tableConfig) error {
 
 func (s *tableSource) Discover(context.Context, tableConfig) (*synclet.Catalog, error) {
 	cat := &synclet.Catalog{}
+	if s.fault == faultNoStreams {
+		return cat, nil
+	}
 	for _, ts := range s.streams {
 		st := ts.stream
-		if s.fault == faultEmptySchema && st.Name == "users" {
+		switch {
+		case s.fault == faultEmptySchema && st.Name == "users":
 			st.JSONSchema = json.RawMessage(`{}`)
+		case s.fault == faultInvalidSchema && st.Name == "users":
+			st.JSONSchema = json.RawMessage(`{"type":"objekt","properties":{"id":{}}}`)
 		}
 		cat.Streams = append(cat.Streams, st)
 	}
@@ -153,6 +172,9 @@ func (s *tableSource) Read(ctx context.Context, _ tableConfig, cat *synclet.Conf
 				return err
 			}
 		}
+		if n, ok := from.Cursor.(float64); ok && s.fault == faultLookback {
+			from.Cursor = n - 10
+		}
 		synclet.Logger(ctx).Info("reading", "stream", desc.Name)
 		rows, err := s.fetch(ctx, ts)
 		if err != nil {
@@ -161,7 +183,7 @@ func (s *tableSource) Read(ctx context.Context, _ tableConfig, cat *synclet.Conf
 		var emit []map[string]any
 		last := from.Cursor
 		for _, row := range rows {
-			if from.Cursor != nil && less(row[ts.cursor], from.Cursor) {
+			if s.fault == faultNoRecords || from.Cursor != nil && less(row[ts.cursor], from.Cursor) {
 				continue
 			}
 			emit = append(emit, s.mutate(desc, row))
@@ -182,7 +204,7 @@ func (s *tableSource) Read(ctx context.Context, _ tableConfig, cat *synclet.Conf
 				return err
 			}
 		}
-		if s.fault != faultStateFirst {
+		if s.fault != faultStateFirst && s.fault != faultNoState {
 			if err := em.StreamState(desc, tableState{Cursor: last}); err != nil {
 				return err
 			}
@@ -216,6 +238,8 @@ func (s *tableSource) mutate(desc synclet.StreamDescriptor, row map[string]any) 
 		out["nickname"] = "x"
 	case faultWrongType:
 		out["id"] = fmt.Sprint(row["id"])
+	case faultNoCursorValue:
+		delete(out, "updated_at")
 	}
 	return out
 }

@@ -18,7 +18,11 @@ import (
 )
 
 // CancelTimeout is how long a read may keep running after its context is
-// cancelled.
+// cancelled. The cancel check catches a read that blocks, sleeps or retries
+// past cancellation; a read that ignores its context but finishes its
+// fixtures sooner passes, so fixtures that exercise it make the read outlast
+// its first message, such as a test server that holds a response until the
+// request's context ends.
 const CancelTimeout = 5 * time.Second
 
 // SourceSuite is what RunSourceSuite needs from a connector's test: inputs
@@ -39,6 +43,11 @@ type SourceSuite struct {
 	// compares numbers numerically, two RFC 3339 timestamps as times and
 	// other strings lexically.
 	CompareCursor func(a, b any) (int, error)
+	// Lookback returns the oldest cursor value the second read may emit for
+	// a stream, given the greatest cursor of the first read, for sources that
+	// re-read a window before their saved cursor. Nil allows nothing older
+	// than that cursor.
+	Lookback func(desc synclet.StreamDescriptor, cursor any) (any, error)
 }
 
 // RunSourceSuite checks that src keeps the protocol contract and reports
@@ -52,10 +61,12 @@ type SourceSuite struct {
 //     its stream's json_schema with no undeclared top-level field;
 //   - no record follows its stream's last STATE, and an incremental stream
 //     with records emits a STATE;
-//   - a second read from the first read's last STATE emits no record of an
-//     incremental stream whose cursor is older than the first read's
-//     greatest cursor;
-//   - read returns within CancelTimeout after its context is cancelled.
+//   - every incremental stream with records has a value at its cursor field,
+//     and a second read from the first read's last STATE emits no record
+//     whose cursor is older than the first read's greatest cursor, or than
+//     the bound Lookback returns for it;
+//   - read returns within CancelTimeout after its context is cancelled at
+//     its first message (see CancelTimeout for what this catches).
 func RunSourceSuite[C any](t testing.TB, src synclet.Source[C], s SourceSuite) {
 	t.Helper()
 	if s.Config == nil || s.BrokenConfig == nil || s.Catalog == nil {
@@ -267,14 +278,25 @@ func checkIncremental[C any](ctx context.Context, t testing.TB, src synclet.Sour
 			t.Errorf("incremental: stream %s has no cursor_field and no source-defined cursor", streamName(desc))
 			continue
 		}
-		top, err := maxCursor(first.Records(desc), path, compare)
+		recs := first.Records(desc)
+		top, err := maxCursor(recs, path, compare)
 		if err != nil {
 			t.Errorf("incremental: stream %s: %v", streamName(desc), err)
 			continue
 		}
-		if top != nil {
-			cursors[desc] = cursor{path: path, top: top}
+		if top == nil {
+			if len(recs) > 0 {
+				t.Errorf("incremental: stream %s: %d record(s) and none has a value at cursor field %s", streamName(desc), len(recs), strings.Join(path, "."))
+			}
+			continue
 		}
+		if s.Lookback != nil {
+			if top, err = s.Lookback(desc, top); err != nil {
+				t.Errorf("incremental: stream %s: lookback: %v", streamName(desc), err)
+				continue
+			}
+		}
+		cursors[desc] = cursor{path: path, top: top}
 	}
 	if len(cursors) == 0 {
 		return
@@ -299,7 +321,7 @@ func checkIncremental[C any](ctx context.Context, t testing.TB, src synclet.Sour
 			continue
 		}
 		if older > 0 {
-			t.Errorf("incremental: stream %s: %d record(s) older than the cursor %v of the first read", streamName(desc), older, c.top)
+			t.Errorf("incremental: stream %s: %d record(s) older than the cursor %v", streamName(desc), older, c.top)
 		}
 	}
 }
