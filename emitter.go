@@ -6,20 +6,32 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 )
 
 // Emitter writes protocol messages to the transport, one Write per message,
-// from any number of goroutines.
+// from any number of goroutines. It counts the records it writes and sets
+// sourceStats.recordCount on every STATE: a STREAM state carries its stream's
+// records since that stream's previous STATE; a GLOBAL or LEGACY state carries
+// every record since the previous STATE and starts every stream's count anew.
+// The Emitter ServeDestination hands a destination writes STATE as given.
 type Emitter struct {
-	mu sync.Mutex
-	w  io.Writer
+	mu        sync.Mutex
+	w         io.Writer
+	echo      bool
+	perStream map[StreamDescriptor]int64
+	total     int64
 }
 
 // NewEmitter returns an Emitter writing to w.
 func NewEmitter(w io.Writer) *Emitter {
-	return &Emitter{w: w}
+	return &Emitter{w: w, perStream: map[StreamDescriptor]int64{}}
+}
+
+func newEchoEmitter(w io.Writer) *Emitter {
+	return &Emitter{w: w, echo: true}
 }
 
 // Record emits one row of a stream with the current time as emitted_at. data
@@ -75,9 +87,42 @@ func (e *Emitter) GlobalState(shared any, streams map[StreamDescriptor]any) erro
 	return e.State(StateMessage{Type: StateTypeGlobal, Global: &GlobalState{SharedState: sharedRaw, StreamStates: states}})
 }
 
-// State emits a state message as given.
+// State emits a state message as given, with sourceStats set to the records
+// it covers.
 func (e *Emitter) State(msg StateMessage) error {
-	return e.write(&Message{Type: MessageTypeState, State: &msg})
+	if e.echo {
+		return e.write(&Message{Type: MessageTypeState, State: &msg})
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	desc, perStream := stateStream(&msg)
+	count := e.total
+	if perStream {
+		count = e.perStream[desc]
+	}
+	msg.SourceStats = &StateStats{RecordCount: float64(count)}
+	b, err := marshalLine(&Message{Type: MessageTypeState, State: &msg})
+	if err != nil {
+		return err
+	}
+	if _, err := e.w.Write(b); err != nil {
+		return fmt.Errorf("write %s message: %w", MessageTypeState, err)
+	}
+	if perStream {
+		e.total -= count
+		delete(e.perStream, desc)
+	} else {
+		e.total = 0
+		clear(e.perStream)
+	}
+	return nil
+}
+
+func stateStream(msg *StateMessage) (StreamDescriptor, bool) {
+	if !strings.EqualFold(string(msg.Type), string(StateTypeStream)) || msg.Stream == nil {
+		return StreamDescriptor{}, false
+	}
+	return msg.Stream.StreamDescriptor, true
 }
 
 // Log emits a LOG message.
@@ -105,17 +150,28 @@ func (e *Emitter) Control(config any) error {
 }
 
 func (e *Emitter) write(m *Message) error {
-	b, err := json.Marshal(m)
+	b, err := marshalLine(m)
 	if err != nil {
-		return fmt.Errorf("marshal %s message: %w", m.Type, err)
+		return err
 	}
-	b = append(b, '\n')
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if _, err := e.w.Write(b); err != nil {
 		return fmt.Errorf("write %s message: %w", m.Type, err)
 	}
+	if m.Type == MessageTypeRecord && !e.echo {
+		e.perStream[StreamDescriptor{Name: m.Record.Stream, Namespace: m.Record.Namespace}]++
+		e.total++
+	}
 	return nil
+}
+
+func marshalLine(m *Message) ([]byte, error) {
+	b, err := json.Marshal(m)
+	if err != nil {
+		return nil, fmt.Errorf("marshal %s message: %w", m.Type, err)
+	}
+	return append(b, '\n'), nil
 }
 
 func marshalValue(v any) (json.RawMessage, error) {

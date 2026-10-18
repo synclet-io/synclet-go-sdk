@@ -104,10 +104,10 @@ func TestEmitterGlobalState(t *testing.T) {
 
 func TestEmitterState(t *testing.T) {
 	m, line := emitOne(t, func(em *Emitter) error {
-		return em.State(StateMessage{Type: StateTypeLegacy, Data: json.RawMessage(`{"timestamp":42}`), SourceStats: &StateStats{RecordCount: 2}})
+		return em.State(StateMessage{Type: StateTypeLegacy, Data: json.RawMessage(`{"timestamp":42}`)})
 	})
 	assert.Equal(t, MessageTypeState, m.Type)
-	assert.Equal(t, `{"type":"STATE","state":{"type":"LEGACY","data":{"timestamp":42},"sourceStats":{"recordCount":2}}}`, line)
+	assert.Equal(t, `{"type":"STATE","state":{"type":"LEGACY","data":{"timestamp":42},"sourceStats":{"recordCount":0}}}`, line)
 }
 
 func TestEmitterLog(t *testing.T) {

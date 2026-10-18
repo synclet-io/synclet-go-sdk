@@ -153,6 +153,10 @@ for _, cs := range catalog.Streams {
 Emit a state only after the records it covers. Synclet persists a state when the destination echoes it, so a
 checkpoint every N rows bounds what a crash replays. CDC sources emit `em.GlobalState(position, perStream)`.
 
+The Emitter counts the records it writes and sets `sourceStats.recordCount` on every STATE, as destinations on
+the current Airbyte CDK require: a STREAM state carries its stream's records since that stream's previous STATE,
+a GLOBAL or LEGACY state every record since the previous STATE.
+
 ## Logging
 
 `synclet.Logger(ctx)` is a `*slog.Logger` whose lines reach Synclet as LOG messages (Debug, Info, Warn and
@@ -196,6 +200,7 @@ The suite reports through `t.Errorf` when:
   stream's `json_schema` or has a top-level field the schema does not declare (unless it sets
   `additionalProperties`);
 - a record follows its stream's last STATE, or an incremental stream emits records and no STATE;
+- a STATE lacks `sourceStats.recordCount`, or its count differs from the records it covers;
 - an incremental stream emits records none of which has a value at its cursor field, or a second read from
   the first read's last STATE emits a record whose cursor is older than the greatest cursor of the first
   read. The cursor is `default_cursor_field` for a source-defined cursor and the configured `cursor_field`

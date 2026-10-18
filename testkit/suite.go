@@ -63,6 +63,10 @@ type SourceSuite struct {
 //     or time_without_timezone takes values without a zone;
 //   - no record follows its stream's last STATE, and an incremental stream
 //     with records emits a STATE;
+//   - every STATE carries sourceStats.recordCount equal to the records it
+//     covers: a STREAM state its stream's records since that stream's
+//     previous STATE, a GLOBAL or LEGACY state every record since the
+//     previous STATE;
 //   - every incremental stream with records has a value at its cursor field,
 //     and a second read from the first read's last STATE emits no record
 //     whose cursor is older than the first read's greatest cursor, or than
@@ -88,6 +92,7 @@ func RunSourceSuite[C any](t testing.TB, src synclet.Source[C], s SourceSuite) {
 	checkDiscover(ctx, t, src, s.Config)
 	if first := checkRead(ctx, t, src, s.Catalog, readReq); first != nil {
 		checkStateOrder(t, s.Catalog, first)
+		checkSourceStats(t, first)
 		next := readReq
 		next.State = first.NextState()
 		checkIncremental(ctx, t, src, s, first, next)
@@ -245,6 +250,40 @@ func checkStateOrder(t testing.TB, cat *synclet.ConfiguredCatalog, out *Output) 
 			t.Errorf("state: stream %s: %d record(s) after its last STATE", streamName(desc), after)
 		case lastState < 0 && records > 0 && cs.SyncMode == synclet.SyncModeIncremental:
 			t.Errorf("state: incremental stream %s emitted %d record(s) and no STATE", streamName(desc), records)
+		}
+	}
+}
+
+func checkSourceStats(t testing.TB, out *Output) {
+	t.Helper()
+	perStream := map[synclet.StreamDescriptor]int64{}
+	var total int64
+	var n int
+	for _, m := range out.Messages {
+		switch {
+		case m.Type == synclet.MessageTypeRecord && m.Record != nil:
+			perStream[recordDescriptor(m.Record)]++
+			total++
+		case m.Type == synclet.MessageTypeState && m.State != nil:
+			n++
+			st := m.State
+			isStream := strings.EqualFold(string(st.Type), string(synclet.StateTypeStream)) && st.Stream != nil
+			want, what, covers := total, strings.ToUpper(string(st.Type)), "the records since the previous STATE"
+			if isStream {
+				desc := st.Stream.StreamDescriptor
+				want, what, covers = perStream[desc], "stream "+streamName(desc), "the records since the stream's previous STATE"
+				total -= want
+				delete(perStream, desc)
+			} else {
+				total = 0
+				clear(perStream)
+			}
+			switch {
+			case st.SourceStats == nil:
+				t.Errorf("state: STATE %d (%s) has no sourceStats.recordCount", n, what)
+			case st.SourceStats.RecordCount != float64(want):
+				t.Errorf("state: STATE %d (%s): sourceStats.recordCount %v, want %d, %s", n, what, st.SourceStats.RecordCount, want, covers)
+			}
 		}
 	}
 }

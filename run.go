@@ -36,7 +36,7 @@ type Request struct {
 // A non-nil error has been emitted as exactly one TRACE ERROR and means the
 // process should exit non-zero.
 func ServeSource[C any](ctx context.Context, src Source[C], req Request, out io.Writer) error {
-	return serve(ctx, out, func(ctx context.Context, em *Emitter) error {
+	return serve(ctx, NewEmitter(out), func(ctx context.Context, em *Emitter) error {
 		switch req.Command {
 		case CommandSpec:
 			return emitSpec(ctx, em, src.Spec)
@@ -76,7 +76,7 @@ func ServeSource[C any](ctx context.Context, src Source[C], req Request, out io.
 // out. A non-nil error has been emitted as exactly one TRACE ERROR and means
 // the process should exit non-zero.
 func ServeDestination[C any](ctx context.Context, dst Destination[C], req Request, out io.Writer) error {
-	return serve(ctx, out, func(ctx context.Context, em *Emitter) error {
+	return serve(ctx, newEchoEmitter(out), func(ctx context.Context, em *Emitter) error {
 		switch req.Command {
 		case CommandSpec:
 			return emitSpec(ctx, em, dst.Spec)
@@ -102,8 +102,7 @@ func ServeDestination[C any](ctx context.Context, dst Destination[C], req Reques
 	})
 }
 
-func serve(ctx context.Context, out io.Writer, call func(ctx context.Context, em *Emitter) error) error {
-	em := NewEmitter(out)
+func serve(ctx context.Context, em *Emitter, call func(ctx context.Context, em *Emitter) error) error {
 	ctx = WithLogger(ctx, NewLogger(em, slog.LevelInfo))
 	trace, err := runRecovered(ctx, em, call)
 	if err == nil {
